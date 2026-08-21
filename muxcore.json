@@ -1,0 +1,16 @@
+{
+  "name": "Emby Playback Bridge",
+  "description": "Emby bridge — session poll, plugin SSE ingest, and playback mesh events (Tracearr parity)",
+  "version": "0.1.0",
+  "author": "MuxCore",
+  "roles": [
+    "playback"
+  ],
+  "capabilities": [
+    "playback.emby",
+    "playback",
+    "settings"
+  ],
+  "contracts": [],
+  "minCoreVersion": "0.5.0"
+}

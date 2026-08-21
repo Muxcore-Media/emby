@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package muxcore.playback.emby.v1;
+
+option go_package = "github.com/Muxcore-Media/emby/proto/embyv1;embyv1";
+
+service EmbyBridgeService {
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc TerminateSession(TerminateSessionRequest) returns (TerminateSessionResponse);
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  bool configured = 1;
+  string base_url = 2;
+  int32 active_sessions = 3;
+}
+
+message TerminateSessionRequest {
+  string session_id = 1;
+}
+
+message TerminateSessionResponse {
+  bool ok = 1;
+  string error = 2;
+}
