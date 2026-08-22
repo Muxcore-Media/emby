@@ -14,7 +14,8 @@ Emby Media Server bridge for MuxCore playback monitoring (Tracearr parity Phase 
 |----------|---------|-------------|
 | `EMBY_URL` | — | Emby server base URL (e.g. `http://emby:8096`) |
 | `EMBY_TOKEN` | — | API token (`X-Emby-Token`) |
-| `EMBY_SESSIONS_POLL_SEC` | `30` | Poll interval for `/Sessions` |
+| `EMBY_SESSIONS_POLL_SEC` | `30` | Poll interval for `/Sessions` (fallback when WebSocket disconnected) |
+| `EMBY_WEBSOCKET` | on | Connect outbound WebSocket to `/embywebsocket` for session push (`SessionsStart`) |
 | `EMBY_SSE_SECRET` | — | Optional bearer/secret for `POST /emby/sse/events` |
 | `EMBY_GRPC_ADDR` | `:9477` | gRPC listen address |
 | `EMBY_HTTP_ADDR` | `:8477` | HTTP (health + SSE ingest) |
@@ -32,4 +33,4 @@ Emby Media Server bridge for MuxCore playback monitoring (Tracearr parity Phase 
 
 ## Status
 
-v0.1.0 — Session poll, SSE ingest endpoint, terminate RPC. Outbound SSE client to Emby plugin pending.
+v0.1.0 — Session poll (fallback), outbound WebSocket to Emby `/embywebsocket`, inbound SSE ingest (`POST /emby/sse/events`), library catalog sync, terminate RPC.

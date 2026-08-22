@@ -43,6 +43,9 @@ type Module struct {
 
 	sessionSeen map[string]string
 	lastActive  int
+
+	wsMu        sync.RWMutex
+	wsConnected bool
 }
 
 type Config struct {
@@ -159,6 +162,7 @@ func (m *Module) Start(ctx context.Context) error {
 	}()
 
 	go m.connectCore()
+	go m.wsLoop()
 	go m.pollSessionsLoop()
 	go m.catalogSyncLoop()
 	return nil

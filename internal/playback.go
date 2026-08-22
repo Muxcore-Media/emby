@@ -41,8 +41,15 @@ func (m *Module) pollSessionsLoop() {
 		m.mu.RUnlock()
 		wait := time.Second
 		if sec > 0 && m.configured() {
-			wait = time.Duration(sec) * time.Second
-			m.pollSessionsOnce()
+			if m.wsConnectedNow() {
+				wait = time.Duration(sec*2) * time.Second
+				if wait < 60*time.Second {
+					wait = 60 * time.Second
+				}
+			} else {
+				wait = time.Duration(sec) * time.Second
+				m.pollSessionsOnce()
+			}
 		}
 		select {
 		case <-m.stopCh:
@@ -60,6 +67,10 @@ func (m *Module) pollSessionsOnce() {
 		slog.Debug("emby: sessions poll failed", "error", err)
 		return
 	}
+	m.processSessionsSnapshot(ctx, sessions)
+}
+
+func (m *Module) processSessionsSnapshot(ctx context.Context, sessions []embySession) {
 	m.mu.Lock()
 	m.lastActive = len(sessions)
 	m.mu.Unlock()
