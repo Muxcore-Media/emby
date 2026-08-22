@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/Muxcore-Media/contracts-playback v0.1.0
-	github.com/Muxcore-Media/core/pkg/contracts v0.5.2
+	github.com/Muxcore-Media/core/pkg/contracts v0.5.8
 	github.com/Muxcore-Media/core/sdk/go/client v0.5.2
 	github.com/Muxcore-Media/core/sdk/go/module v0.5.2
 	github.com/Muxcore-Media/playback-contract v0.1.0
@@ -15,7 +15,7 @@ require (
 
 require (
 	github.com/Muxcore-Media/contracts-media v0.1.0 // indirect
-	github.com/Muxcore-Media/core v0.5.4
+	github.com/Muxcore-Media/core v0.5.8 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
@@ -26,7 +26,7 @@ replace github.com/Muxcore-Media/contracts-playback => ../contracts-playback
 
 replace github.com/Muxcore-Media/playback-contract => ../playback-contract
 
-replace github.com/Muxcore-Media/core => ../core
+replace github.com/Muxcore-Media/contracts-media => ../contracts-media
 
 replace github.com/Muxcore-Media/core/pkg/contracts => ../core/pkg/contracts
 
