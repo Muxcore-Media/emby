@@ -22,7 +22,7 @@ func (m *Module) wsEnabled() bool {
 	return envTruthy(v)
 }
 
-func (m *Module) wsLoop() {
+func (m *Module) wsLoop(ctx context.Context) {
 	backoff := time.Second
 	for {
 		select {
@@ -38,7 +38,7 @@ func (m *Module) wsLoop() {
 			}
 			continue
 		}
-		err := m.runWSConnection()
+		err := m.runWSConnection(ctx)
 		m.setWSConnected(false)
 		if err != nil {
 			slog.Debug("emby: websocket disconnected", "error", err)
@@ -76,7 +76,7 @@ func embyWSURL(base, token string) (string, error) {
 	return u.String(), nil
 }
 
-func (m *Module) runWSConnection() error {
+func (m *Module) runWSConnection(ctx context.Context) error {
 	m.mu.RLock()
 	base, token := m.baseURL, m.token
 	sec := m.sessionsPollSec
@@ -87,11 +87,14 @@ func (m *Module) runWSConnection() error {
 		return err
 	}
 	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
-	conn, _, err := dialer.Dial(wsURL, http.Header{"User-Agent": []string{"MuxCore-Emby-Bridge"}})
+	conn, resp, err := dialer.Dial(wsURL, http.Header{"User-Agent": []string{"MuxCore-Emby-Bridge"}})
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
+	defer func() { _ = conn.Close() }()
 
 	ms := sec * 1000
 	if ms < 1000 {
@@ -115,7 +118,7 @@ func (m *Module) runWSConnection() error {
 		if err != nil {
 			return err
 		}
-		m.handleWSMessage(msg)
+		m.handleWSMessage(ctx, msg)
 	}
 }
 
@@ -124,7 +127,7 @@ type embyWSMessage struct {
 	Data        json.RawMessage `json:"Data"`
 }
 
-func (m *Module) handleWSMessage(raw []byte) {
+func (m *Module) handleWSMessage(ctx context.Context, raw []byte) {
 	var msg embyWSMessage
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		return
@@ -136,7 +139,7 @@ func (m *Module) handleWSMessage(raw []byte) {
 			slog.Debug("emby: websocket sessions parse failed", "error", err)
 			return
 		}
-		m.processSessionsSnapshot(context.Background(), sessions)
+		m.processSessionsSnapshot(ctx, sessions)
 	case "PlaybackStarted", "PlaybackStopped", "SessionEnded":
 		// Sessions snapshot covers state; direct events are optional noise.
 	case "Ping":

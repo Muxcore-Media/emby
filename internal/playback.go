@@ -11,30 +11,30 @@ import (
 )
 
 type playbackEventPayload struct {
-	ItemID          string `json:"item_id"`
-	EmbyItemID      string `json:"emby_item_id"`
-	UserID          string `json:"user_id"`
-	UserName        string `json:"user_name"`
-	SessionID       string `json:"session_id"`
-	PositionSeconds int64  `json:"position_seconds"`
-	DurationSeconds int64  `json:"duration_seconds"`
-	Title           string `json:"title"`
-	MediaType       string `json:"media_type"`
-	MediaPath       string `json:"media_path,omitempty"`
-	ServerType      string `json:"server_type"`
-	IsPaused        bool   `json:"is_paused,omitempty"`
-	IsTranscode     bool   `json:"is_transcode,omitempty"`
-	PlayMethod      string `json:"play_method,omitempty"`
-	Platform        string `json:"platform,omitempty"`
-	Device          string `json:"device,omitempty"`
-	Player          string `json:"player,omitempty"`
-	IPAddress       string `json:"ip_address,omitempty"`
+	Device           string `json:"device,omitempty"`
+	Title            string `json:"title"`
+	UserID           string `json:"user_id"`
+	UserName         string `json:"user_name"`
+	SessionID        string `json:"session_id"`
 	StreamResolution string `json:"stream_resolution,omitempty"`
-	VideoHeight     int    `json:"video_height,omitempty"`
-	VideoWidth      int    `json:"video_width,omitempty"`
+	IPAddress        string `json:"ip_address,omitempty"`
+	ItemID           string `json:"item_id"`
+	MediaType        string `json:"media_type"`
+	MediaPath        string `json:"media_path,omitempty"`
+	EmbyItemID       string `json:"emby_item_id"`
+	Player           string `json:"player,omitempty"`
+	ServerType       string `json:"server_type"`
+	PlayMethod       string `json:"play_method,omitempty"`
+	Platform         string `json:"platform,omitempty"`
+	DurationSeconds  int64  `json:"duration_seconds"`
+	PositionSeconds  int64  `json:"position_seconds"`
+	VideoHeight      int    `json:"video_height,omitempty"`
+	VideoWidth       int    `json:"video_width,omitempty"`
+	IsPaused         bool   `json:"is_paused,omitempty"`
+	IsTranscode      bool   `json:"is_transcode,omitempty"`
 }
 
-func (m *Module) pollSessionsLoop() {
+func (m *Module) pollSessionsLoop(ctx context.Context) {
 	for {
 		m.mu.RLock()
 		sec := m.sessionsPollSec
@@ -48,7 +48,7 @@ func (m *Module) pollSessionsLoop() {
 				}
 			} else {
 				wait = time.Duration(sec) * time.Second
-				m.pollSessionsOnce()
+				m.pollSessionsOnce(ctx)
 			}
 		}
 		select {
@@ -59,8 +59,8 @@ func (m *Module) pollSessionsLoop() {
 	}
 }
 
-func (m *Module) pollSessionsOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+func (m *Module) pollSessionsOnce(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	sessions, err := m.listSessions(ctx)
 	if err != nil {

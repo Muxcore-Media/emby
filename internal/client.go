@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-type embyItem struct {
+type embyItem struct { //nolint:govet // field order matches Emby API JSON grouping
 	ID       string `json:"Id"`
 	Name     string `json:"Name"`
 	Type     string `json:"Type"`
@@ -21,28 +21,28 @@ type embyItem struct {
 }
 
 type embyVirtualFolder struct {
-	Name string `json:"Name"`
+	Name   string `json:"Name"`
 	ItemId string `json:"ItemId"`
 }
 
 type embySession struct {
-	Id             string    `json:"Id"`
-	UserId         string    `json:"UserId"`
-	UserName       string    `json:"UserName"`
-	Client         string    `json:"Client"`
-	DeviceName     string    `json:"DeviceName"`
-	RemoteEndPoint string    `json:"RemoteEndPoint"`
-	AppName        string    `json:"AppName"`
 	NowPlayingItem *embyItem `json:"NowPlayingItem"`
 	PlayState      *struct {
+		PlayMethod    string `json:"PlayMethod"`
 		PositionTicks int64  `json:"PositionTicks"`
 		IsPaused      bool   `json:"IsPaused"`
-		PlayMethod    string `json:"PlayMethod"`
 	} `json:"PlayState"`
 	TranscodingInfo *struct {
 		Width  int `json:"Width"`
 		Height int `json:"Height"`
 	} `json:"TranscodingInfo"`
+	Id             string `json:"Id"`
+	UserId         string `json:"UserId"`
+	UserName       string `json:"UserName"`
+	Client         string `json:"Client"`
+	DeviceName     string `json:"DeviceName"`
+	RemoteEndPoint string `json:"RemoteEndPoint"`
+	AppName        string `json:"AppName"`
 }
 
 func (m *Module) embyGET(ctx context.Context, path string) ([]byte, int, error) {
@@ -52,7 +52,7 @@ func (m *Module) embyGET(ctx context.Context, path string) ([]byte, int, error) 
 	if base == "" || token == "" {
 		return nil, 0, fmt.Errorf("emby not configured")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, http.NoBody)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -62,7 +62,7 @@ func (m *Module) embyGET(ctx context.Context, path string) ([]byte, int, error) 
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, resp.StatusCode, err
@@ -74,7 +74,7 @@ func (m *Module) embyPOST(ctx context.Context, path string) error {
 	m.mu.RLock()
 	base, token := m.baseURL, m.token
 	m.mu.RUnlock()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (m *Module) embyPOST(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("emby POST %s status %d", path, resp.StatusCode)
 	}

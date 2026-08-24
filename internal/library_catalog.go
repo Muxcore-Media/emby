@@ -14,18 +14,18 @@ import (
 )
 
 type libraryCatalogPayload struct {
-	Action        string `json:"action"`
-	ServerID      string `json:"server_id"`
-	ServerType    string `json:"server_type"`
-	ItemID        string `json:"item_id"`
-	MediaType     string `json:"media_type,omitempty"`
-	MuxcoreID     string `json:"muxcore_id,omitempty"`
-	Title         string `json:"title,omitempty"`
-	MediaPath     string `json:"media_path,omitempty"`
-	LibraryName   string `json:"library_name,omitempty"`
-	FileSizeBytes int64  `json:"file_size_bytes,omitempty"`
+	Action          string `json:"action"`
+	ServerID        string `json:"server_id"`
+	ServerType      string `json:"server_type"`
+	ItemID          string `json:"item_id"`
+	MediaType       string `json:"media_type,omitempty"`
+	MuxcoreID       string `json:"muxcore_id,omitempty"`
+	Title           string `json:"title,omitempty"`
+	MediaPath       string `json:"media_path,omitempty"`
+	LibraryName     string `json:"library_name,omitempty"`
 	VideoResolution string `json:"video_resolution,omitempty"`
-	ParentID      string `json:"parent_id,omitempty"`
+	ParentID        string `json:"parent_id,omitempty"`
+	FileSizeBytes   int64  `json:"file_size_bytes,omitempty"`
 }
 
 func (m *Module) publishLibraryCatalogEvent(ctx context.Context, action string, item libraryCatalogPayload) {
@@ -97,7 +97,7 @@ func (m *Module) catalogSyncIntervalSec() int {
 	return 6 * 3600
 }
 
-func (m *Module) catalogSyncLoop() {
+func (m *Module) catalogSyncLoop(ctx context.Context) {
 	interval := time.Duration(m.catalogSyncIntervalSec()) * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -106,7 +106,7 @@ func (m *Module) catalogSyncLoop() {
 		if !m.configured() {
 			return
 		}
-		n, err := m.syncLibraryCatalog(context.Background())
+		n, err := m.syncLibraryCatalog(ctx)
 		if err != nil {
 			slog.Debug("emby: library catalog sync failed", "error", err)
 			return
@@ -126,7 +126,7 @@ func (m *Module) catalogSyncLoop() {
 	}
 }
 
-func (m *Module) handlePluginLibrarySSE(eventName, data string) {
+func (m *Module) handlePluginLibrarySSE(ctx context.Context, eventName, data string) {
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(data)), &raw); err != nil {
 		return
@@ -139,14 +139,14 @@ func (m *Module) handlePluginLibrarySSE(eventName, data string) {
 	if itemID == "" {
 		return
 	}
-	m.publishLibraryCatalogEvent(context.Background(), action, libraryCatalogPayload{
-		ItemID:          itemID,
-		MediaType:       stringField(raw, "itemType", "item_type", "ItemType"),
-		Title:           stringField(raw, "title", "Title", "Name"),
-		MediaPath:       stringField(raw, "path", "Path", "mediaPath"),
-		FileSizeBytes:   int64Field(raw, "size", "Size", "file_size_bytes", "fileSizeBytes"),
-		MuxcoreID:       "emby:" + itemID,
-		ParentID:        stringField(raw, "parentId", "parent_id", "ParentId"),
+	m.publishLibraryCatalogEvent(ctx, action, libraryCatalogPayload{
+		ItemID:        itemID,
+		MediaType:     stringField(raw, "itemType", "item_type", "ItemType"),
+		Title:         stringField(raw, "title", "Title", "Name"),
+		MediaPath:     stringField(raw, "path", "Path", "mediaPath"),
+		FileSizeBytes: int64Field(raw, "size", "Size", "file_size_bytes", "fileSizeBytes"),
+		MuxcoreID:     "emby:" + itemID,
+		ParentID:      stringField(raw, "parentId", "parent_id", "ParentId"),
 		VideoResolution: playbackv1.NormalizeStreamResolution(
 			int(int64Field(raw, "height", "Height", "video_height", "videoHeight")),
 			int(int64Field(raw, "width", "Width", "video_width", "videoWidth")),

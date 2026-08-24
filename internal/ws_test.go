@@ -49,10 +49,10 @@ func TestEmbyWebSocketSessionsMessage(t *testing.T) {
 		UserId:   "u1",
 		UserName: "alice",
 		NowPlayingItem: &embyItem{ID: "item-1", Name: "Movie", Type: "Movie"},
-		PlayState:      &struct {
+		PlayState: &struct {
+			PlayMethod    string `json:"PlayMethod"`
 			PositionTicks int64  `json:"PositionTicks"`
 			IsPaused      bool   `json:"IsPaused"`
-			PlayMethod    string `json:"PlayMethod"`
 		}{PositionTicks: 600000000, PlayMethod: "DirectPlay"},
 	}}
 	data, err := json.Marshal(sample)
@@ -64,7 +64,7 @@ func TestEmbyWebSocketSessionsMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.handleWSMessage(raw)
+	m.handleWSMessage(context.Background(), raw)
 
 	mu.Lock()
 	defer mu.Unlock()

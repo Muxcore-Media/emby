@@ -68,14 +68,14 @@ func TestEmbySessionPollPublishesEvents(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = m.Stop(ctx) })
 
-	m.pollSessionsOnce()
+	m.pollSessionsOnce(ctx)
 	mu.Lock()
 	if len(events) != 1 || events[0] != playbackevents.EventPlaybackStarted {
 		t.Fatalf("events: %v", events)
 	}
 	mu.Unlock()
 
-	m.pollSessionsOnce()
+	m.pollSessionsOnce(ctx)
 	mu.Lock()
 	if len(events) != 2 || events[1] != playbackevents.EventPlaybackProgress {
 		t.Fatalf("progress: %v", events)
@@ -83,7 +83,7 @@ func TestEmbySessionPollPublishesEvents(t *testing.T) {
 	mu.Unlock()
 
 	active = false
-	m.pollSessionsOnce()
+	m.pollSessionsOnce(ctx)
 	mu.Lock()
 	if len(events) != 3 || events[2] != playbackevents.EventPlaybackStopped {
 		t.Fatalf("stop: %v", events)
