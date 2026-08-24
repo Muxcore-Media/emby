@@ -5,8 +5,8 @@ go 1.26.4
 require (
 	github.com/Muxcore-Media/contracts-playback v0.1.0
 	github.com/Muxcore-Media/core/pkg/contracts v0.5.8
-	github.com/Muxcore-Media/core/sdk/go/client v0.5.2
-	github.com/Muxcore-Media/core/sdk/go/module v0.5.2
+	github.com/Muxcore-Media/core/sdk/go/client v0.5.8
+	github.com/Muxcore-Media/core/sdk/go/module v0.5.8
 	github.com/Muxcore-Media/playback-contract v0.1.0
 	github.com/gorilla/websocket v1.5.3
 	google.golang.org/grpc v1.83.0
