@@ -84,7 +84,7 @@ func (m *Module) updateSetting(key, value string) error {
 func (m *Module) Status(ctx context.Context, _ *embyv1.StatusRequest) (*embyv1.StatusResponse, error) {
 	m.mu.RLock()
 	base := m.baseURL
-	active := int32(m.lastActive)
+	active := int32(m.lastActive) //nolint:gosec // active session count from Emby fits int32 status field
 	m.mu.RUnlock()
 	return &embyv1.StatusResponse{
 		Configured:     m.configured(),
@@ -99,7 +99,7 @@ func (m *Module) TerminateSession(ctx context.Context, req *embyv1.TerminateSess
 	}
 	path := fmt.Sprintf("/Sessions/%s/Playing/Stop", req.GetSessionId())
 	if err := m.embyPOST(ctx, path); err != nil {
-		return &embyv1.TerminateSessionResponse{Ok: false, Error: err.Error()}, nil
+		return &embyv1.TerminateSessionResponse{Ok: false, Error: err.Error()}, nil //nolint:nilerr // application-level failure encoded in response
 	}
 	return &embyv1.TerminateSessionResponse{Ok: true}, nil
 }

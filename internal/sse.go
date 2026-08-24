@@ -27,6 +27,22 @@ func (m *Module) handleSSEEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	eventType, ev := parseSSESessionEvent(raw)
 	if eventType == "" {
+		if eventName := stringField(raw, "event", "Event", "eventName", "event_name"); eventName != "" {
+			dataStr := stringField(raw, "data", "Data")
+			if dataStr == "" {
+				if dataRaw, ok := raw["data"]; ok {
+					if b, err := json.Marshal(dataRaw); err == nil {
+						dataStr = string(b)
+					}
+				}
+			}
+			if dataStr != "" {
+				m.handlePluginLibrarySSE(r.Context(), eventName, dataStr)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"ok":true}`))
+				return
+			}
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true,"ignored":true}`))
 		return
