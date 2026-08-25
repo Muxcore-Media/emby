@@ -45,9 +45,9 @@ func TestEmbyWebSocketSessionsMessage(t *testing.T) {
 
 	m := NewModule(Config{GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0"})
 	sample := []embySession{{
-		Id:       "sess-ws",
-		UserId:   "u1",
-		UserName: "alice",
+		Id:             "sess-ws",
+		UserId:         "u1",
+		UserName:       "alice",
 		NowPlayingItem: &embyItem{ID: "item-1", Name: "Movie", Type: "Movie"},
 		PlayState: &struct {
 			PlayMethod    string `json:"PlayMethod"`

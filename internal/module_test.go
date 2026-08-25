@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	embyv1 "github.com/Muxcore-Media/emby/proto/embyv1"
 	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
+	embyv1 "github.com/Muxcore-Media/emby/proto/embyv1"
 	playbackv1 "github.com/Muxcore-Media/playback-contract/proto/playbackv1"
 )
 
@@ -118,11 +118,11 @@ func TestEmbySSEEventIngest(t *testing.T) {
 	t.Cleanup(func() { _ = m.Stop(ctx) })
 
 	body, _ := json.Marshal(map[string]any{
-		"state":          "playing",
-		"sessionId":      "s1",
-		"itemId":         "i1",
-		"userId":         "u1",
-		"positionTicks":  100000000,
+		"state":         "playing",
+		"sessionId":     "s1",
+		"itemId":        "i1",
+		"userId":        "u1",
+		"positionTicks": 100000000,
 	})
 	req := httptest.NewRequest(http.MethodPost, "/emby/sse/events", bytes.NewReader(body))
 	w := httptest.NewRecorder()
