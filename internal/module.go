@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,26 +24,30 @@ const moduleVersion = "0.1.0"
 
 type Module struct {
 	embyv1.UnimplementedEmbyBridgeServiceServer
-	httpLis         net.Listener
-	grpcLis         net.Listener
-	grpcSrv         *grpc.Server
-	httpSrv         *http.Server
-	runCancel       context.CancelFunc
-	sessionSeen     map[string]string
-	stopCh          chan struct{}
-	mc              *client.Client
-	httpCli         *http.Client
-	token           string
-	httpAddr        string
-	grpcAddr        string
-	sseSecret       string
-	baseURL         string
-	id              string
-	sessionsPollSec int
-	lastActive      int
-	mu              sync.RWMutex
-	wsMu            sync.RWMutex
-	wsConnected     bool
+	httpLis          net.Listener
+	grpcLis          net.Listener
+	grpcSrv          *grpc.Server
+	httpSrv          *http.Server
+	runCancel        context.CancelFunc
+	sessionSeen      map[string]string
+	stopCh           chan struct{}
+	meshWake         chan struct{}
+	mc               *client.Client
+	httpCli          *http.Client
+	dataDir          string
+	token            string
+	httpAddr         string
+	grpcAddr         string
+	sseSecret        string
+	baseURL          string
+	id               string
+	sessionsPollSec  int
+	catalogSyncSec   int
+	lastActive       int
+	mu               sync.RWMutex
+	wsMu             sync.RWMutex
+	wsConnected      bool
+	websocketEnabled bool
 }
 
 type Config struct {
@@ -50,9 +55,12 @@ type Config struct {
 	BaseURL         string
 	Token           string
 	SSESecret       string
+	DataDir         string
 	GRPCAddr        string
 	HTTPAddr        string
 	SessionsPollSec int
+	CatalogSyncSec  int
+	WebSocket       bool
 }
 
 func NewModule(cfg Config) *Module {
@@ -65,9 +73,16 @@ func NewModule(cfg Config) *Module {
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = ":8477"
 	}
+	if cfg.DataDir == "" {
+		cfg.DataDir = "/var/lib/muxcore-emby"
+	}
 	if cfg.SessionsPollSec <= 0 {
 		cfg.SessionsPollSec = 30
 	}
+	if cfg.CatalogSyncSec <= 0 {
+		cfg.CatalogSyncSec = 6 * 3600
+	}
+	cfg.WebSocket = envTruthyDefaultTrue(os.Getenv("EMBY_WEBSOCKET"))
 	if v := os.Getenv("EMBY_URL"); v != "" {
 		cfg.BaseURL = v
 	}
@@ -82,6 +97,14 @@ func NewModule(cfg Config) *Module {
 			cfg.SessionsPollSec = n
 		}
 	}
+	if v := os.Getenv("EMBY_CATALOG_SYNC_SEC"); v != "" {
+		if n, err := parseInt(v); err == nil && n > 0 {
+			cfg.CatalogSyncSec = n
+		}
+	}
+	if v := os.Getenv("EMBY_DATA_DIR"); v != "" {
+		cfg.DataDir = v
+	}
 	if v := os.Getenv("EMBY_GRPC_ADDR"); v != "" {
 		cfg.GRPCAddr = v
 	}
@@ -89,16 +112,20 @@ func NewModule(cfg Config) *Module {
 		cfg.HTTPAddr = v
 	}
 	return &Module{
-		id:              cfg.ID,
-		baseURL:         trimSlash(cfg.BaseURL),
-		token:           cfg.Token,
-		sseSecret:       cfg.SSESecret,
-		sessionsPollSec: cfg.SessionsPollSec,
-		grpcAddr:        cfg.GRPCAddr,
-		httpAddr:        cfg.HTTPAddr,
-		stopCh:          make(chan struct{}),
-		sessionSeen:     map[string]string{},
-		httpCli:         &http.Client{Timeout: 20 * time.Second},
+		id:               cfg.ID,
+		baseURL:          trimSlash(cfg.BaseURL),
+		token:            cfg.Token,
+		sseSecret:        cfg.SSESecret,
+		sessionsPollSec:  cfg.SessionsPollSec,
+		catalogSyncSec:   cfg.CatalogSyncSec,
+		websocketEnabled: cfg.WebSocket,
+		dataDir:          cfg.DataDir,
+		grpcAddr:         cfg.GRPCAddr,
+		httpAddr:         cfg.HTTPAddr,
+		stopCh:           make(chan struct{}),
+		meshWake:         make(chan struct{}, 1),
+		sessionSeen:      map[string]string{},
+		httpCli:          &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
@@ -121,6 +148,12 @@ func (m *Module) Info() contracts.ModuleInfo {
 }
 
 func (m *Module) Init(ctx context.Context) error {
+	if err := os.MkdirAll(m.dataDir, 0o700); err != nil {
+		return fmt.Errorf("create data dir %s: %w", m.dataDir, err)
+	}
+	if err := m.loadDurable(); err != nil {
+		return fmt.Errorf("load settings: %w", err)
+	}
 	var lc net.ListenConfig
 	lis, err := lc.Listen(ctx, "tcp", m.grpcAddr)
 	if err != nil {
@@ -150,8 +183,16 @@ func (m *Module) Start(ctx context.Context) error {
 	}()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		if err := m.Health(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprintf(w, `{"status":"error","error":%q}`, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("POST /emby/sse/events", m.handleSSEEvent)
@@ -231,6 +272,7 @@ func (m *Module) connectCore() {
 		}
 		c, err := client.Dial(addr, opts...)
 		if err != nil {
+			slog.Warn("emby: dial core failed, retrying", "error", err, "backoff", backoff)
 			select {
 			case <-m.stopCh:
 				return
@@ -248,7 +290,33 @@ func (m *Module) connectCore() {
 		m.mc = c
 		m.mu.Unlock()
 		slog.Info("emby: connected to core mesh", "addr", addr)
-		return
+		backoff = time.Second
+
+		select {
+		case <-m.stopCh:
+			return
+		case <-m.meshWake:
+		}
+
+		m.mu.Lock()
+		if m.mc == c {
+			_ = m.mc.Close()
+			m.mc = nil
+		}
+		m.mu.Unlock()
+	}
+}
+
+func (m *Module) dropMeshClient(c *client.Client) {
+	m.mu.Lock()
+	if m.mc == c {
+		_ = m.mc.Close()
+		m.mc = nil
+	}
+	m.mu.Unlock()
+	select {
+	case m.meshWake <- struct{}{}:
+	default:
 	}
 }
 
@@ -268,7 +336,19 @@ func (m *Module) publishEvent(ctx context.Context, eventType string, payload []b
 	if mc == nil {
 		return nil
 	}
-	return mc.Events.Publish(ctx, eventType, m.id, payload)
+	err := mc.Events.Publish(ctx, eventType, m.id, payload)
+	if err != nil {
+		m.dropMeshClient(mc)
+	}
+	return err
+}
+
+func envTruthyDefaultTrue(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return true
+	}
+	return envTruthy(v)
 }
 
 func trimSlash(s string) string {

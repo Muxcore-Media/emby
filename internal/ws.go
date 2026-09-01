@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -15,11 +14,10 @@ import (
 )
 
 func (m *Module) wsEnabled() bool {
-	v := strings.TrimSpace(os.Getenv("EMBY_WEBSOCKET"))
-	if v == "" {
-		return true
-	}
-	return envTruthy(v)
+	m.mu.RLock()
+	enabled := m.websocketEnabled
+	m.mu.RUnlock()
+	return enabled
 }
 
 func (m *Module) wsLoop(ctx context.Context) {
@@ -107,12 +105,20 @@ func (m *Module) runWSConnection(ctx context.Context) error {
 	m.setWSConnected(true)
 	slog.Info("emby: websocket connected")
 
+	readWait := time.Duration(sec*3) * time.Second
+	if readWait < 90*time.Second {
+		readWait = 90 * time.Second
+	}
+
 	for {
 		select {
 		case <-m.stopCh:
 			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"MessageType":"SessionsStop","Data":""}`))
 			return nil
 		default:
+		}
+		if err := conn.SetReadDeadline(time.Now().Add(readWait)); err != nil {
+			return err
 		}
 		_, msg, err := conn.ReadMessage()
 		if err != nil {

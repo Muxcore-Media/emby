@@ -57,7 +57,7 @@ func (m *Module) checkSSEAuth(r *http.Request) bool {
 	secret := m.sseSecret
 	m.mu.RUnlock()
 	if secret == "" {
-		return true
+		return false
 	}
 	if r.Header.Get("X-Emby-SSE-Secret") == secret {
 		return true
@@ -94,13 +94,19 @@ func parseSSESessionEvent(raw map[string]any) (string, playbackEventPayload) {
 	if eventType == "" {
 		return "", playbackEventPayload{}
 	}
-	posTicks := int64Field(raw, "positionTicks", "position_ticks")
+	posTicks := int64Field(raw, "positionTicks", "position_ticks", "PositionTicks")
+	durTicks := int64Field(raw, "runTimeTicks", "run_time_ticks", "RunTimeTicks", "durationTicks", "DurationTicks")
 	ev := playbackEventPayload{
 		ItemID:          itemID,
 		EmbyItemID:      itemID,
 		UserID:          userID,
+		UserName:        stringField(raw, "userName", "user_name", "UserName"),
 		SessionID:       sessionID,
+		Title:           stringField(raw, "title", "Title", "name", "Name"),
+		MediaType:       stringField(raw, "mediaType", "media_type", "type", "Type", "itemType"),
+		MediaPath:       stringField(raw, "mediaPath", "media_path", "path", "Path"),
 		PositionSeconds: ticksToSeconds(posTicks),
+		DurationSeconds: ticksToSeconds(durTicks),
 		ServerType:      "emby",
 	}
 	return eventType, ev

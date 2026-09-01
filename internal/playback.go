@@ -56,6 +56,9 @@ func (m *Module) pollSessionsLoop(ctx context.Context) {
 			return
 		case <-time.After(wait):
 		}
+		if m.wsConnectedNow() {
+			m.pollSessionsOnce(ctx)
+		}
 	}
 }
 
@@ -121,19 +124,20 @@ func sessionState(s embySession) string {
 func sessionToEvent(s embySession) playbackEventPayload {
 	item := s.NowPlayingItem
 	ev := playbackEventPayload{
-		ItemID:     item.ID,
-		EmbyItemID: item.ID,
-		UserID:     s.UserId,
-		UserName:   s.UserName,
-		SessionID:  s.Id,
-		Title:      item.Name,
-		MediaType:  item.Type,
-		MediaPath:  item.Path,
-		ServerType: "emby",
-		Platform:   s.Client,
-		Device:     s.DeviceName,
-		Player:     firstNonEmpty(s.AppName, s.Client),
-		IPAddress:  remoteIP(s.RemoteEndPoint),
+		ItemID:          item.ID,
+		EmbyItemID:      item.ID,
+		UserID:          s.UserId,
+		UserName:        s.UserName,
+		SessionID:       s.Id,
+		Title:           item.Name,
+		MediaType:       item.Type,
+		MediaPath:       item.Path,
+		ServerType:      "emby",
+		Platform:        s.Client,
+		Device:          s.DeviceName,
+		Player:          firstNonEmpty(s.AppName, s.Client),
+		IPAddress:       remoteIP(s.RemoteEndPoint),
+		DurationSeconds: ticksToSeconds(item.RunTimeTicks),
 	}
 	if s.PlayState != nil {
 		ev.PositionSeconds = ticksToSeconds(s.PlayState.PositionTicks)

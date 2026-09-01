@@ -6,18 +6,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
 type embyItem struct { //nolint:govet // field order matches Emby API JSON grouping
-	ID       string `json:"Id"`
-	Name     string `json:"Name"`
-	Type     string `json:"Type"`
-	Path     string `json:"Path"`
-	Size     int64  `json:"Size"`
-	ParentId string `json:"ParentId"`
-	Width    int    `json:"Width"`
-	Height   int    `json:"Height"`
+	ID           string            `json:"Id"`
+	Name         string            `json:"Name"`
+	Type         string            `json:"Type"`
+	Path         string            `json:"Path"`
+	Size         int64             `json:"Size"`
+	ParentId     string            `json:"ParentId"`
+	Width        int               `json:"Width"`
+	Height       int               `json:"Height"`
+	RunTimeTicks int64             `json:"RunTimeTicks"`
+	ProviderIds  map[string]string `json:"ProviderIds"`
 }
 
 type embyVirtualFolder struct {
@@ -106,7 +109,9 @@ func (m *Module) probeSystemInfo(ctx context.Context) error {
 }
 
 func (m *Module) listSessions(ctx context.Context) ([]embySession, error) {
-	body, code, err := m.embyGET(ctx, "/Sessions")
+	q := url.Values{}
+	q.Set("Fields", "Path,Width,Height,RunTimeTicks")
+	body, code, err := m.embyGET(ctx, "/Sessions?"+q.Encode())
 	if err != nil {
 		return nil, err
 	}
@@ -151,21 +156,73 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
+const embyItemsPageSize = 500
+
+func (m *Module) listEmbyItemsForFolder(ctx context.Context, parentID string) ([]embyItem, error) {
+	var all []embyItem
+	start := 0
+	for {
+		q := url.Values{}
+		if parentID != "" {
+			q.Set("ParentId", parentID)
+		}
+		q.Set("Recursive", "true")
+		q.Set("IncludeItemTypes", "Movie,Series,Episode")
+		q.Set("Fields", "Path,Size,ParentId,Width,Height,ProviderIds,RunTimeTicks")
+		q.Set("StartIndex", fmt.Sprintf("%d", start))
+		q.Set("Limit", fmt.Sprintf("%d", embyItemsPageSize))
+		body, code, err := m.embyGET(ctx, "/Items?"+q.Encode())
+		if err != nil {
+			return nil, err
+		}
+		if code >= 300 {
+			return nil, fmt.Errorf("emby /Items status %d", code)
+		}
+		var raw struct {
+			Items []embyItem `json:"Items"`
+		}
+		if err := json.Unmarshal(body, &raw); err != nil {
+			return nil, err
+		}
+		if len(raw.Items) == 0 {
+			break
+		}
+		all = append(all, raw.Items...)
+		if len(raw.Items) < embyItemsPageSize {
+			break
+		}
+		start += len(raw.Items)
+	}
+	return all, nil
+}
+
 func (m *Module) listEmbyItems(ctx context.Context) ([]embyItem, error) {
-	body, code, err := m.embyGET(ctx, "/Items?Recursive=true&IncludeItemTypes=Movie,Series,Episode&Fields=Path,Size,ParentId,Width,Height")
+	folders, err := m.listEmbyVirtualFolders(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if code >= 300 {
-		return nil, fmt.Errorf("emby /Items status %d", code)
+	if len(folders) == 0 {
+		return m.listEmbyItemsForFolder(ctx, "")
 	}
-	var raw struct {
-		Items []embyItem `json:"Items"`
+	seen := map[string]bool{}
+	var all []embyItem
+	for _, folder := range folders {
+		if folder.ItemId == "" {
+			continue
+		}
+		items, err := m.listEmbyItemsForFolder(ctx, folder.ItemId)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			if it.ID == "" || seen[it.ID] {
+				continue
+			}
+			seen[it.ID] = true
+			all = append(all, it)
+		}
 	}
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, err
-	}
-	return raw.Items, nil
+	return all, nil
 }
 
 func (m *Module) listEmbyVirtualFolders(ctx context.Context) ([]embyVirtualFolder, error) {

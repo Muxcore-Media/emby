@@ -3,8 +3,10 @@ package internal
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Muxcore-Media/core/pkg/contracts"
+	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
 	embyv1 "github.com/Muxcore-Media/emby/proto/embyv1"
 )
 
@@ -20,11 +22,18 @@ func (m *Module) settingsDefs() []contracts.SettingDef {
 	m.mu.RLock()
 	baseURL := m.baseURL
 	token := m.token
+	secret := m.sseSecret
 	poll := m.sessionsPollSec
+	ws := m.websocketEnabled
+	catalog := m.catalogSyncSec
 	m.mu.RUnlock()
-	masked := ""
-	if token != "" {
-		masked = "••••"
+	masked := modulesdk.MaskSecret(token)
+	wsVal := "0"
+	if ws {
+		wsVal = "1"
+	}
+	if catalog <= 0 {
+		catalog = 6 * 3600
 	}
 	return []contracts.SettingDef{
 		{
@@ -39,11 +48,20 @@ func (m *Module) settingsDefs() []contracts.SettingDef {
 		{
 			Key:         "emby_token",
 			Label:       "Emby API Token",
-			Type:        contracts.SettingTypeString,
+			Type:        contracts.SettingTypeSecret,
 			Value:       masked,
 			Description: "X-Emby-Token (EMBY_TOKEN)",
 			Required:    true,
 			Group:       "Connection",
+		},
+		{
+			Key:         "emby_sse_secret",
+			Label:       "SSE Ingest Secret",
+			Type:        contracts.SettingTypeSecret,
+			Value:       modulesdk.MaskSecret(secret),
+			Description: "Required for POST /emby/sse/events (X-Emby-SSE-Secret or Authorization: Bearer)",
+			Required:    false,
+			Group:       "Security",
 		},
 		{
 			Key:         "sessions_poll_seconds",
@@ -53,6 +71,24 @@ func (m *Module) settingsDefs() []contracts.SettingDef {
 			Description: "Poll /Sessions interval in seconds",
 			Required:    false,
 			Group:       "Playback",
+		},
+		{
+			Key:         "emby_websocket",
+			Label:       "WebSocket Sessions",
+			Type:        contracts.SettingTypeString,
+			Value:       wsVal,
+			Description: "1 connects outbound to /embywebsocket (EMBY_WEBSOCKET)",
+			Required:    false,
+			Group:       "Playback",
+		},
+		{
+			Key:         "emby_catalog_sync_sec",
+			Label:       "Library Catalog Sync Interval",
+			Type:        contracts.SettingTypeString,
+			Value:       fmt.Sprintf("%d", catalog),
+			Description: "Full library catalog sync interval in seconds (default 21600)",
+			Required:    false,
+			Group:       "Library",
 		},
 	}
 }
@@ -64,21 +100,39 @@ func (m *Module) updateSetting(key, value string) error {
 		m.baseURL = trimSlash(value)
 		m.mu.Unlock()
 	case "emby_token", "EMBY_TOKEN":
-		if value != "" && value != "••••" {
-			m.mu.Lock()
-			m.token = value
-			m.mu.Unlock()
+		if value == "********" {
+			return nil
 		}
+		m.mu.Lock()
+		m.token = strings.TrimSpace(value)
+		m.mu.Unlock()
+	case "emby_sse_secret", "EMBY_SSE_SECRET":
+		if value == "********" {
+			return nil
+		}
+		m.mu.Lock()
+		m.sseSecret = strings.TrimSpace(value)
+		m.mu.Unlock()
 	case "sessions_poll_seconds", "EMBY_SESSIONS_POLL_SEC":
 		if n, err := parseInt(value); err == nil && n > 0 {
 			m.mu.Lock()
 			m.sessionsPollSec = n
 			m.mu.Unlock()
 		}
+	case "emby_websocket", "EMBY_WEBSOCKET":
+		m.mu.Lock()
+		m.websocketEnabled = envTruthy(value)
+		m.mu.Unlock()
+	case "emby_catalog_sync_sec", "EMBY_CATALOG_SYNC_SEC":
+		if n, err := parseInt(value); err == nil && n > 0 {
+			m.mu.Lock()
+			m.catalogSyncSec = n
+			m.mu.Unlock()
+		}
 	default:
 		return fmt.Errorf("unknown setting %q", key)
 	}
-	return nil
+	return m.persistDurable()
 }
 
 func (m *Module) Status(ctx context.Context, _ *embyv1.StatusRequest) (*embyv1.StatusResponse, error) {

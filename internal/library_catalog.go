@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +24,9 @@ type libraryCatalogPayload struct {
 	VideoResolution string `json:"video_resolution,omitempty"`
 	ParentID        string `json:"parent_id,omitempty"`
 	FileSizeBytes   int64  `json:"file_size_bytes,omitempty"`
+	ImdbID          string `json:"imdb_id,omitempty"`
+	TmdbID          int64  `json:"tmdb_id,omitempty"`
+	TvdbID          int64  `json:"tvdb_id,omitempty"`
 }
 
 func (m *Module) publishLibraryCatalogEvent(ctx context.Context, action string, item libraryCatalogPayload) {
@@ -44,55 +45,69 @@ func (m *Module) publishLibraryCatalogEvent(ctx context.Context, action string, 
 	}
 }
 
-func (m *Module) embyLibraryNameMap(ctx context.Context) map[string]string {
-	out := map[string]string{}
-	folders, err := m.listEmbyVirtualFolders(ctx)
-	if err != nil {
-		return out
+func (m *Module) publishCatalogFromEmbyItem(ctx context.Context, libraryName string, it embyItem) {
+	if it.ID == "" {
+		return
 	}
-	for _, f := range folders {
-		if f.ItemId != "" && f.Name != "" {
-			out[f.ItemId] = f.Name
-		}
-	}
-	return out
+	imdb, tmdb, tvdb := externalIDsFromProviderMap(it.ProviderIds)
+	m.publishLibraryCatalogEvent(ctx, "upsert", libraryCatalogPayload{
+		ItemID:          it.ID,
+		MediaType:       it.Type,
+		Title:           it.Name,
+		MediaPath:       it.Path,
+		LibraryName:     libraryName,
+		FileSizeBytes:   it.Size,
+		MuxcoreID:       "emby:" + it.ID,
+		VideoResolution: playbackv1.NormalizeStreamResolution(it.Height, it.Width, ""),
+		ParentID:        it.ParentId,
+		ImdbID:          imdb,
+		TmdbID:          tmdb,
+		TvdbID:          tvdb,
+	})
 }
 
 func (m *Module) syncLibraryCatalog(ctx context.Context) (int, error) {
 	if !m.configured() {
 		return 0, nil
 	}
-	items, err := m.listEmbyItems(ctx)
+	folders, err := m.listEmbyVirtualFolders(ctx)
 	if err != nil {
 		return 0, err
 	}
-	libNames := m.embyLibraryNameMap(ctx)
 	published := 0
-	for _, it := range items {
-		if it.ID == "" {
+	if len(folders) == 0 {
+		items, err := m.listEmbyItemsForFolder(ctx, "")
+		if err != nil {
+			return 0, err
+		}
+		for _, it := range items {
+			m.publishCatalogFromEmbyItem(ctx, "", it)
+			published++
+		}
+		return published, nil
+	}
+	for _, folder := range folders {
+		if folder.ItemId == "" {
 			continue
 		}
-		m.publishLibraryCatalogEvent(ctx, "upsert", libraryCatalogPayload{
-			ItemID:          it.ID,
-			MediaType:       it.Type,
-			Title:           it.Name,
-			MediaPath:       it.Path,
-			LibraryName:     libNames[it.ParentId],
-			FileSizeBytes:   it.Size,
-			MuxcoreID:       "emby:" + it.ID,
-			VideoResolution: playbackv1.NormalizeStreamResolution(it.Height, it.Width, ""),
-			ParentID:        it.ParentId,
-		})
-		published++
+		items, err := m.listEmbyItemsForFolder(ctx, folder.ItemId)
+		if err != nil {
+			return published, err
+		}
+		for _, it := range items {
+			m.publishCatalogFromEmbyItem(ctx, folder.Name, it)
+			published++
+		}
 	}
 	return published, nil
 }
 
 func (m *Module) catalogSyncIntervalSec() int {
-	if v := os.Getenv("EMBY_CATALOG_SYNC_SEC"); v != "" {
-		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
-			return n
-		}
+	m.mu.RLock()
+	sec := m.catalogSyncSec
+	m.mu.RUnlock()
+	if sec > 0 {
+		return sec
 	}
 	return 6 * 3600
 }

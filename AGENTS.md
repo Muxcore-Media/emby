@@ -8,7 +8,7 @@ MuxCore sidecar module (`emby`). Workspace deploy and SSH: [`../AGENTS.md`](../A
 |-------|-------|
 | Directory | `emby` |
 | Capabilities | see muxcore.json |
-| Contracts | none declared |
+| Contracts | `contracts-playback` (event types) + `playback-contract` (session JSON proto) |
 
 ## Agent rules
 

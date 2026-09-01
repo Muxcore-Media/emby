@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestEmbySessionPollPublishesEvents(t *testing.T) {
 		"Client": "Emby Web",
 		"DeviceName": "Chrome",
 		"RemoteEndPoint": "10.0.0.2:1234",
-		"NowPlayingItem": {"Id": "item-1", "Name": "Movie", "Type": "Movie", "Path": "/media/movie.mkv"},
+		"NowPlayingItem": {"Id": "item-1", "Name": "Movie", "Type": "Movie", "Path": "/media/movie.mkv", "RunTimeTicks": 72000000000},
 		"PlayState": {"PositionTicks": 600000000, "IsPaused": false, "PlayMethod": "Transcode"},
 		"TranscodingInfo": {}
 	}]`
@@ -47,9 +48,11 @@ func TestEmbySessionPollPublishesEvents(t *testing.T) {
 
 	var mu sync.Mutex
 	var events []string
-	testPublishHook = func(_ context.Context, eventType, _ string, _ []byte) error {
+	var lastPayload []byte
+	testPublishHook = func(_ context.Context, eventType, _ string, payload []byte) error {
 		mu.Lock()
 		events = append(events, eventType)
+		lastPayload = append([]byte(nil), payload...)
 		mu.Unlock()
 		return nil
 	}
@@ -61,6 +64,7 @@ func TestEmbySessionPollPublishesEvents(t *testing.T) {
 		SessionsPollSec: 30,
 		GRPCAddr:        "127.0.0.1:0",
 		HTTPAddr:        "127.0.0.1:0",
+		DataDir:         t.TempDir(),
 	})
 	ctx := context.Background()
 	if err := m.Init(ctx); err != nil {
@@ -73,7 +77,14 @@ func TestEmbySessionPollPublishesEvents(t *testing.T) {
 	if len(events) != 1 || events[0] != playbackevents.EventPlaybackStarted {
 		t.Fatalf("events: %v", events)
 	}
+	msg, err := playbackv1.UnmarshalSessionEvent(lastPayload)
 	mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.GetDurationSeconds() != 7200 {
+		t.Fatalf("duration_seconds: %d", msg.GetDurationSeconds())
+	}
 
 	m.pollSessionsOnce(ctx)
 	mu.Lock()
@@ -110,7 +121,7 @@ func TestEmbySSEEventIngest(t *testing.T) {
 	}
 	t.Cleanup(func() { testPublishHook = nil })
 
-	m := NewModule(Config{GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0"})
+	m := NewModule(Config{GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0", SSESecret: "s3cret", DataDir: t.TempDir()})
 	ctx := context.Background()
 	if err := m.Init(ctx); err != nil {
 		t.Fatal(err)
@@ -125,6 +136,7 @@ func TestEmbySSEEventIngest(t *testing.T) {
 		"positionTicks": 100000000,
 	})
 	req := httptest.NewRequest(http.MethodPost, "/emby/sse/events", bytes.NewReader(body))
+	req.Header.Set("X-Emby-SSE-Secret", "s3cret")
 	w := httptest.NewRecorder()
 	m.handleSSEEvent(w, req)
 	if w.Code != http.StatusOK {
@@ -135,6 +147,70 @@ func TestEmbySSEEventIngest(t *testing.T) {
 		t.Fatalf("type %q", lastType)
 	}
 	mu.Unlock()
+}
+
+func TestEmbySSEAuthRequired(t *testing.T) {
+	m := NewModule(Config{SSESecret: "s3cret", DataDir: t.TempDir()})
+	req := httptest.NewRequest(http.MethodPost, "/emby/sse/events", strings.NewReader(`{"state":"playing"}`))
+	w := httptest.NewRecorder()
+	m.handleSSEEvent(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status %d", w.Code)
+	}
+}
+
+func TestHealthConfiguredAndEmpty(t *testing.T) {
+	ctx := context.Background()
+	unconfigured := NewModule(Config{DataDir: t.TempDir()})
+	if err := unconfigured.Health(ctx); err == nil {
+		t.Fatal("expected unconfigured health error")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/System/Info" {
+			_, _ = w.Write([]byte(`{"Id":"srv"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	m := NewModule(Config{BaseURL: srv.URL, Token: "tok", DataDir: t.TempDir()})
+	if err := m.Health(ctx); err != nil {
+		t.Fatalf("configured health: %v", err)
+	}
+}
+
+func TestTerminateSessionEmptyID(t *testing.T) {
+	m := NewModule(Config{DataDir: t.TempDir()})
+	resp, err := m.TerminateSession(context.Background(), &embyv1.TerminateSessionRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetOk() || resp.GetError() != "session_id required" {
+		t.Fatalf("resp=%+v", resp)
+	}
+}
+
+func TestSettingsDurable(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModule(Config{DataDir: dir})
+	if err := m.Init(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.updateSetting("emby_url", "http://emby:8096"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.updateSetting("emby_sse_secret", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	m2 := NewModule(Config{DataDir: dir})
+	if err := m2.loadDurable(); err != nil {
+		t.Fatal(err)
+	}
+	if m2.baseURL != "http://emby:8096" || m2.sseSecret != "secret" {
+		t.Fatalf("loaded url=%q secret=%q", m2.baseURL, m2.sseSecret)
+	}
 }
 
 func TestTerminateSession(t *testing.T) {
@@ -149,7 +225,7 @@ func TestTerminateSession(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := NewModule(Config{BaseURL: srv.URL, Token: "tok", GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0"})
+	m := NewModule(Config{BaseURL: srv.URL, Token: "tok", GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0", DataDir: t.TempDir()})
 	ctx := context.Background()
 	if err := m.Init(ctx); err != nil {
 		t.Fatal(err)
