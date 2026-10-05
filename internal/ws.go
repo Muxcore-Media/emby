@@ -80,10 +80,16 @@ func (m *Module) runWSConnection(ctx context.Context) error {
 	sec := m.sessionsPollSec
 	m.mu.RUnlock()
 
+	if err := guardOutboundURL(base); err != nil {
+		return err
+	}
 	wsURL, err := embyWSURL(base, token)
 	if err != nil {
 		return err
 	}
+	// The websocket dialer does not use the guarded HTTP client. The base URL
+	// is checked first, so a metadata or link-local server is refused before
+	// the scheme is rewritten to ws/wss.
 	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
 	conn, resp, err := dialer.Dial(wsURL, http.Header{"User-Agent": []string{"MuxCore-Emby-Bridge"}})
 	if err != nil {

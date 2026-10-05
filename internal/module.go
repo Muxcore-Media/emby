@@ -126,7 +126,7 @@ func NewModule(cfg Config) *Module {
 		stopCh:           make(chan struct{}),
 		meshWake:         make(chan struct{}, 1),
 		sessionSeen:      map[string]string{},
-		httpCli:          &http.Client{Timeout: 20 * time.Second},
+		httpCli:          newGuardedClient(20 * time.Second),
 	}
 }
 

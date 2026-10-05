@@ -55,6 +55,9 @@ func (m *Module) embyGET(ctx context.Context, path string) ([]byte, int, error) 
 	if base == "" || token == "" {
 		return nil, 0, fmt.Errorf("emby not configured")
 	}
+	if err := guardOutboundURL(base + path); err != nil {
+		return nil, 0, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, http.NoBody)
 	if err != nil {
 		return nil, 0, err
@@ -77,6 +80,9 @@ func (m *Module) embyPOST(ctx context.Context, path string) error {
 	m.mu.RLock()
 	base, token := m.baseURL, m.token
 	m.mu.RUnlock()
+	if err := guardOutboundURL(base + path); err != nil {
+		return err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, http.NoBody)
 	if err != nil {
 		return err

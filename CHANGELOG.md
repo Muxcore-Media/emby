@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+- Outbound Emby URLs go through netguard Integration (private LAN and loopback allowed; link-local, cloud metadata, and non-HTTP schemes refused). Settings reject a blocked base URL. The session websocket checks the HTTP base before dialing (NFR-SEC-009).
+
 ## [0.1.5] - 2026-10-05
 
 
