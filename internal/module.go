@@ -17,10 +17,9 @@ import (
 	"github.com/Muxcore-Media/core/pkg/contracts"
 	"github.com/Muxcore-Media/core/sdk/go/client"
 	modulesdk "github.com/Muxcore-Media/core/sdk/go/module"
+	manifest "github.com/Muxcore-Media/emby"
 	embyv1 "github.com/Muxcore-Media/emby/proto/embyv1"
 )
-
-const moduleVersion = "0.1.0"
 
 type Module struct {
 	embyv1.UnimplementedEmbyBridgeServiceServer
@@ -133,7 +132,7 @@ func (m *Module) Info() contracts.ModuleInfo {
 	return contracts.ModuleInfo{
 		ID:          m.id,
 		Name:        "Emby Playback Bridge",
-		Version:     moduleVersion,
+		Version:     modulesdk.ManifestVersion(manifest.ManifestJSON),
 		Roles:       []string{"playback"},
 		Description: "Emby session poll and playback mesh events",
 		Author:      "MuxCore",
