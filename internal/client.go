@@ -196,35 +196,6 @@ func (m *Module) listEmbyItemsForFolder(ctx context.Context, parentID string) ([
 	return all, nil
 }
 
-func (m *Module) listEmbyItems(ctx context.Context) ([]embyItem, error) {
-	folders, err := m.listEmbyVirtualFolders(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(folders) == 0 {
-		return m.listEmbyItemsForFolder(ctx, "")
-	}
-	seen := map[string]bool{}
-	var all []embyItem
-	for _, folder := range folders {
-		if folder.ItemId == "" {
-			continue
-		}
-		items, err := m.listEmbyItemsForFolder(ctx, folder.ItemId)
-		if err != nil {
-			return nil, err
-		}
-		for _, it := range items {
-			if it.ID == "" || seen[it.ID] {
-				continue
-			}
-			seen[it.ID] = true
-			all = append(all, it)
-		}
-	}
-	return all, nil
-}
-
 func (m *Module) listEmbyVirtualFolders(ctx context.Context) ([]embyVirtualFolder, error) {
 	body, code, err := m.embyGET(ctx, "/Library/VirtualFolders")
 	if err != nil {

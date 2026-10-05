@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	playbackevents "github.com/Muxcore-Media/contracts-playback/events"
-	embyv1 "github.com/Muxcore-Media/emby/proto/embyv1"
 	playbackv1 "github.com/Muxcore-Media/contracts-playback/playbackv1"
+	embyv1 "github.com/Muxcore-Media/emby/proto/embyv1"
 )
 
 func TestEmbySessionPollPublishesEvents(t *testing.T) {

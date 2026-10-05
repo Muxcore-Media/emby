@@ -8,11 +8,11 @@ import (
 )
 
 type durableSettings struct {
+	WebSocket       *bool  `json:"emby_websocket,omitempty"`
 	BaseURL         string `json:"emby_url"`
 	Token           string `json:"emby_token"`
 	SSESecret       string `json:"emby_sse_secret"`
 	SessionsPollSec int    `json:"sessions_poll_seconds"`
-	WebSocket       *bool  `json:"emby_websocket,omitempty"`
 	CatalogSyncSec  int    `json:"emby_catalog_sync_sec"`
 }
 
@@ -22,7 +22,7 @@ func (m *Module) settingsPath() string {
 
 func (m *Module) loadDurable() error {
 	path := m.settingsPath()
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is settings.json under the operator-configured data dir
 	if err != nil {
 		if os.IsNotExist(err) {
 			return m.persistDurable()

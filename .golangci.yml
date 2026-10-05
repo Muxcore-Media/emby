@@ -81,6 +81,13 @@ linters:
       - path: '.*_test\.go'
         linters:
           - gosec
+      # libraryCatalogPayload is the JSON wire payload published on the event bus;
+      # its field order is kept grouped by meaning rather than reordered for
+      # govet fieldalignment.
+      - linters:
+          - govet
+        text: 'fieldalignment'
+        source: 'type libraryCatalogPayload struct'
       - linters:
           - noctx
         source: '//nolint'
