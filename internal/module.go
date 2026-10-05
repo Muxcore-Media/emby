@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Muxcore-Media/core/sdk/go/module/meshtls"
+
 	"google.golang.org/grpc"
 
 	"github.com/Muxcore-Media/core/pkg/contracts"
@@ -172,7 +174,12 @@ func (m *Module) Init(ctx context.Context) error {
 func (m *Module) Start(ctx context.Context) error {
 	runCtx, runCancel := context.WithCancel(context.WithoutCancel(ctx))
 	m.runCancel = runCancel
-	m.grpcSrv = grpc.NewServer()
+	srv, err := meshtls.NewServer()
+	if err != nil {
+		runCancel()
+		return fmt.Errorf("gRPC mesh TLS: %w", err)
+	}
+	m.grpcSrv = srv
 	embyv1.RegisterEmbyBridgeServiceServer(m.grpcSrv, m)
 	modulesdk.RegisterSettings(m.grpcSrv, m.id, m)
 	go func() {
